@@ -1,4 +1,4 @@
-Overview : This portfolio includes two coursework extensions and one personal project. Each item has a short demo video and runnable code.
+Overview : This portfolio includes two coursework extensions and one personal project. Each item has runnable code.
 
 
 1.1 MIPS Mini Game: Ice Girl & Fire Boy

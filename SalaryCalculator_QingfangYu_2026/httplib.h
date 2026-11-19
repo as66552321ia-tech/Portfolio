@@ -1,9 +1,4 @@
-//
-//  httplib.h
-//
-//  Copyright (c) 2026 Yuji Hirose. All rights reserved.
-//  MIT License
-//
+// Reference list in relevant sections, using AI to fix bugs
 
 #ifndef CPPHTTPLIB_HTTPLIB_H
 #define CPPHTTPLIB_HTTPLIB_H
@@ -229,7 +224,7 @@ using ssize_t = __int64;
 
 #if defined(__has_include)
 #if __has_include(<afunix.h>)
-// afunix.h uses types declared in winsock2.h, so has to be included after it.
+
 #include <afunix.h>
 #define CPPHTTPLIB_HAVE_AFUNIX_H 1
 #endif
@@ -323,8 +318,6 @@ using socket_t = int;
 #ifdef _WIN32
 #include <wincrypt.h>
 
-// these are defined in wincrypt.h and it breaks compilation if BoringSSL is
-// used
 #undef X509_NAME
 #undef X509_CERT_PAIR
 #undef X509_EXTENSIONS
@@ -384,13 +377,6 @@ namespace httplib {
 
 namespace detail {
 
-/*
- * Backport std::make_unique from C++14.
- *
- * NOTE: This code came up with the following stackoverflow post:
- * https://stackoverflow.com/questions/10149840/c-arrays-and-make-unique
- *
- */
 
 template <class T, class... Args>
 typename std::enable_if<!std::is_array<T>::value, std::unique_ptr<T>>::type
@@ -452,8 +438,6 @@ struct hash {
   size_t hash_core(const char *s, size_t l, size_t h) const {
     return (l == 0) ? h
                     : hash_core(s + 1, l - 1,
-                                // Unsets the 6 high bits of h, therefore no
-                                // overflow happens
                                 (((std::numeric_limits<size_t>::max)() >> 6) &
                                  h * 33) ^
                                     static_cast<unsigned char>(to_lower(*s)));
@@ -1040,24 +1024,6 @@ private:
   std::string pattern_;
 };
 
-/**
- * Captures parameters in request path and stores them in Request::path_params
- *
- * Capture name is a substring of a pattern from : to /.
- * The rest of the pattern is matched against the request path directly
- * Parameters are captured starting from the next character after
- * the end of the last matched static pattern fragment until the next /.
- *
- * Example pattern:
- * "/path/fragments/:capture/more/fragments/:second_capture"
- * Static fragments:
- * "/path/fragments/", "more/fragments/"
- *
- * Given the following request path:
- * "/path/fragments/:1/more/fragments/:2"
- * the resulting capture will be
- * {{"capture", "1"}, {"second_capture", "2"}}
- */
 class PathParamsMatcher final : public MatcherBase {
 public:
   PathParamsMatcher(const std::string &pattern);
@@ -1065,28 +1031,15 @@ public:
   bool match(Request &request) const override;
 
 private:
-  // Treat segment separators as the end of path parameter capture
-  // Does not need to handle query parameters as they are parsed before path
-  // matching
+
   static constexpr char separator = '/';
 
-  // Contains static path fragments to match against, excluding the '/' after
-  // path params
-  // Fragments are separated by path params
   std::vector<std::string> static_fragments_;
-  // Stores the names of the path parameters to be used as keys in the
-  // Request::path_params map
+
   std::vector<std::string> param_names_;
 };
 
-/**
- * Performs std::regex_match on request path
- * and stores the result in Request::matches
- *
- * Note that regex match is performed directly on the whole request.
- * This means that wildcard patterns may match multiple path segments with /:
- * "/begin/(.*)/end" will match both "/begin/middle/end" and "/begin/1/2/end".
- */
+
 class RegexMatcher final : public MatcherBase {
 public:
   RegexMatcher(const std::string &pattern)
@@ -1621,11 +1574,7 @@ public:
 
   Result Options(const std::string &path);
   Result Options(const std::string &path, const Headers &headers);
-  // clang-format on
 
-  // Streaming API: Open a stream for reading response body incrementally
-  // Socket ownership is transferred to StreamHandle for true streaming
-  // Supports all HTTP methods (GET, POST, PUT, PATCH, DELETE, etc.)
   StreamHandle open_stream(const std::string &method, const std::string &path,
                            const Params &params = {},
                            const Headers &headers = {},
@@ -2002,11 +1951,7 @@ public:
 
   Result Options(const std::string &path);
   Result Options(const std::string &path, const Headers &headers);
-  // clang-format on
 
-  // Streaming API: Open a stream for reading response body incrementally
-  // Socket ownership is transferred to StreamHandle for true streaming
-  // Supports all HTTP methods (GET, POST, PUT, PATCH, DELETE, etc.)
   ClientImpl::StreamHandle open_stream(const std::string &method,
                                        const std::string &path,
                                        const Params &params = {},
@@ -2410,10 +2355,7 @@ Client::set_max_timeout(const std::chrono::duration<Rep, Period> &duration) {
   cli_->set_max_timeout(duration);
 }
 
-/*
- * Forward declarations and types that will be part of the .h file if split into
- * .h + .cc.
- */
+
 
 std::string hosted_at(const std::string &hostname);
 
@@ -2682,8 +2624,6 @@ private:
 };
 #endif
 
-// NOTE: until the read size reaches `fixed_buffer_size`, use `fixed_buffer`
-// to store data. The call can set memory on stack for performance.
 class stream_line_reader {
 public:
   stream_line_reader(Stream &strm, char *fixed_buffer,
@@ -2795,7 +2735,7 @@ public:
   Result(const Result &) = delete;
   Result &operator=(const Result &) = delete;
 
-  // Check if the result is valid (connection succeeded and response received)
+  // Check if the result is valid 
   bool is_valid() const { return handle_.is_valid(); }
   explicit operator bool() const { return is_valid(); }
 
@@ -4916,20 +4856,7 @@ socket_t create_socket(const std::string &host, const std::string &ip, int port,
     auto sock =
         WSASocketW(rp->ai_family, rp->ai_socktype, rp->ai_protocol, nullptr, 0,
                    WSA_FLAG_NO_HANDLE_INHERIT | WSA_FLAG_OVERLAPPED);
-    /**
-     * Since the WSA_FLAG_NO_HANDLE_INHERIT is only supported on Windows 7 SP1
-     * and above the socket creation fails on older Windows Systems.
-     *
-     * Let's try to create a socket the old way in this case.
-     *
-     * Reference:
-     * https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsasocketa
-     *
-     * WSA_FLAG_NO_HANDLE_INHERIT:
-     * This flag is supported on Windows 7 with SP1, Windows Server 2008 R2 with
-     * SP1, and later
-     *
-     */
+    
     if (sock == INVALID_SOCKET) {
       sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
     }
@@ -6881,14 +6808,7 @@ inline bool range_error(Request &req, Response &res) {
         last_pos = content_len - 1;
       }
 
-      // NOTE: RFC-9110 '14.1.2. Byte Ranges':
-      // A client can limit the number of bytes requested without knowing the
-      // size of the selected representation. If the last-pos value is absent,
-      // or if the value is greater than or equal to the current length of the
-      // representation data, the byte range is interpreted as the remainder of
-      // the representation (i.e., the server replaces the value of last-pos
-      // with a value that is one less than the current length of the selected
-      // representation).
+    
       // https://www.rfc-editor.org/rfc/rfc9110.html#section-14.1.2-6
       if (last_pos == -1 || last_pos >= content_len) {
         last_pos = content_len - 1;
@@ -10762,9 +10682,7 @@ inline bool ClientImpl::create_redirect_client(
     }
 
     // Client certificates are set through constructor for SSLClient
-    // NOTE: SSLClient constructor already takes client_cert_path and
-    // client_key_path so we need to create it properly if client certs are
-    // needed
+
 
     // Execute the redirect
     return detail::redirect(redirect_client, req, res, path, location, error);
@@ -10857,7 +10775,6 @@ inline bool ClientImpl::write_content_with_provider(Stream &strm,
   auto is_shutting_down = []() { return false; };
 
   if (req.is_chunked_content_provider_) {
-    // TODO: Brotli support
     std::unique_ptr<detail::compressor> compressor;
 #ifdef CPPHTTPLIB_ZLIB_SUPPORT
     if (compress_) {
